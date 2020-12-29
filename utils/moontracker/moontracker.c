@@ -136,18 +136,46 @@ double elevation, azimuth;
 	   to an antenna tracker connected to the serial port */
 
 	int n, port;
-	char message[30]="\n";
+	//char message[30]="\n";
+	char message[256]="\n";
 
 	port=antfd;
 
-	sprintf(message, "AZ%3.1f EL%3.1f \x0D\x0A", azimuth,elevation);
-	n=write(port,message,30);
+	//sprintf(message, " echo \"P %3.1f %3.1f\" | /usr/local/bin/rotctl -m 901 -r /dev/cuaU0 -s 600 \n", azimuth,elevation);
+	sprintf(message, " echo \"P %3.1f %3.1f\" | /usr/local/bin/rotctl -m 901 -r /dev/cuaU2 -s 600 \n", azimuth,elevation);
+	//sprintf(message, " echo \"P %3.1f %3.1f\" | /usr/local/bin/rotctl -m 901 -r /dev/cuaU0 -s 600 > /dev/null\n", azimuth,elevation> 10.0 ? elevation-9.0 : elevation);
+	//sprintf(message, "AZ%3.1f EL%3.1f \x0D\x0A", azimuth,elevation);
+#if 0
+//	n=write(port,message,30);
 
+	message[0]=0x57;
+	message[1]=0;
+	message[2]=0;
+	message[3]=0;
+	message[4]=0;
+	message[5]=0;
+	message[6]=0;
+	message[7]=0;
+	message[8]=0;
+	message[9]=0;
+	message[10]=0;
+	message[11]=0x1f;
+	message[12]=0x20;
+
+	n=write(port,message,13);
+	fprintf(stderr,"write(%i) %x %x %x %x %x %x %x %x %x %x %x %x %x\n",n,message[0],message[1],message[2],message[3],message[4],message[5],message[6],message[7],message[8],message[9],message[10],message[11],message[12]);
 	if (n<0)
 	{
 		fprintf(stderr,"%c*** Error: Problem Writing To Antenna Port!\n",7);		kill(pid,1);
 		exit(-1);
 	}
+	n=read(port,message,1);
+	fprintf(stderr,"read(%i) %x %x %x %x %x %x %x %x %x %x %x %x %x\n",n,message[0],message[1],message[2],message[3],message[4],message[5],message[6],message[7],message[8],message[9],message[10],message[11],message[12]);
+#endif
+
+	fprintf(stderr,"%s",message);
+	system(message);
+
 }
 
 void FindMoon(daynum)
@@ -402,6 +430,7 @@ char argc, *argv[];
 		exit(-1);
 	}
 
+#if 0
 	antfd=open(serial_port, O_RDWR|O_NOCTTY);
 
 	if (antfd!=-1)
@@ -414,7 +443,8 @@ char argc, *argv[];
 		/* 9600 baud, 8-bits, no parity,
 		   1-stop bit, no handshaking */
 
-		newtty.c_cflag=B9600|CS8|CLOCAL;
+		newtty.c_cflag=B600|CS8|CLOCAL;
+		//newtty.c_cflag=B9600|CS8|CLOCAL;
 		newtty.c_oflag=0;
 		newtty.c_lflag=0;
 
@@ -427,6 +457,7 @@ char argc, *argv[];
 		fprintf(stderr, "%c*** Error: Unable To Open Antenna Port\n",7);
 		exit(-1);
 	}
+#endif
 
 	if (ReadQTH(qthfile)==0)
 	{
@@ -436,7 +467,50 @@ char argc, *argv[];
 
 	moonrise=FindMoonRise();
 	daynum=CurrentDaynum();
+	daynum=CurrentDaynum();
+	FindMoon(daynum);
+	fprintf(stderr,"Moon el:%f az:%f\r\v",moon_el,moon_az);
 
+		fprintf(stderr,"MoonTracker running on %s!\n",serial_port);
+		while (1)
+		{
+			daynum=CurrentDaynum();
+			FindMoon(daynum);
+		//fprintf(stderr,"Moon el:%f az:%f\r",moon_el,moon_az);
+
+			if (moon_el<0.0)
+			{
+				/* Go to sleep until moon rise. */
+
+				moonrise=FindMoonRise();
+
+				if (daynum<moonrise)
+				{
+					sleeptime=(unsigned)(86400.0*(moonrise-daynum));
+					sleep(sleeptime);
+				}
+			}
+
+			//if (moon_el>=0.0 && antfd!=-1)
+			if (moon_el>=0.0)
+			{
+				iaz=(int)rint(moon_az);
+				iel=(int)rint(moon_el);
+
+				if ((oldel!=iel || oldaz!=iaz) || (once_per_second))
+				{
+					TrackDataOut(antfd,(float)iel,(float)iaz);
+					oldel=iel;
+					oldaz=iaz;
+				}
+			}
+
+			if (once_per_second)
+				sleep (1);
+			else
+				sleep (60);
+		}
+#if 0
 	if (!(pid=fork()))
 	{
 		while (1)
@@ -485,4 +559,5 @@ char argc, *argv[];
 
 		exit(0);
 	}
+#endif
 }
