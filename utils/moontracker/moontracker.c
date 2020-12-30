@@ -143,7 +143,7 @@ double elevation, azimuth;
 
 	char message[256]="\n";
 
-	sprintf(message, " echo \"P %3.1f %3.1f\" | /usr/local/bin/rotctl -m 901 -r /dev/cuaU2 -s 600 \n", azimuth,elevation);
+	sprintf(message, "P %3.1f %3.1f\n", azimuth,elevation);
 
 	fprintf(stderr,"%s",message);
 	write(antfd,message,sizeof(message));
@@ -359,7 +359,8 @@ char argc, *argv[];
 	unsigned sleeptime=0;
 	double daynum;
 	int sockfd; 
-    struct sockaddr_in servaddr;
+    	struct sockaddr_in servaddr;
+	struct hostent *server;
 
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0); 
@@ -410,10 +411,11 @@ char argc, *argv[];
 
 	if (rot_hostname[0]==0)
 	{
-		servaddr.sin_addr.s_addr = inet_addr("localhost"); 
+		server = gethostbyname("localhost");
 	} else {
-		servaddr.sin_addr.s_addr = inet_addr(rot_hostname); 
+		server = gethostbyname(rot_hostname);
 	}
+	bcopy((char *)server->h_addr,(char*)&servaddr.sin_addr.s_addr, server->h_length);
 
 	if (rot_port[0]==0)
 	{
@@ -443,6 +445,13 @@ char argc, *argv[];
 	FindMoon(daynum);
 	fprintf(stderr,"Moon el:%f az:%f\r\v",moon_el,moon_az);
 
+					if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) { 
+						printf("connection with the server failed...\n"); 
+						exit(0); 
+					} 
+					else {
+						printf("connected to the server..\n"); 
+					}
 		//fprintf(stderr,"MoonTracker running on %s!\n",serial_port);
 		while (1)
 		{
@@ -471,15 +480,7 @@ char argc, *argv[];
 
 				if ((oldel!=iel || oldaz!=iaz) || (once_per_second))
 				{
-					if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) { 
-						printf("connection with the server failed...\n"); 
-						exit(0); 
-					} 
-					else {
-						printf("connected to the server..\n"); 
-					}
 					TrackDataOut(sockfd,(float)iel,(float)iaz);
-					close(sockfd); 
 					oldel=iel;
 					oldaz=iaz;
 				}
@@ -487,54 +488,5 @@ char argc, *argv[];
 
 			sleep (60);
 		}
-#if 0
-	if (!(pid=fork()))
-	{
-		while (1)
-		{
-			daynum=CurrentDaynum();
-			FindMoon(daynum);
-
-			if (moon_el<0.0)
-			{
-				/* Go to sleep until moon rise. */
-
-				moonrise=FindMoonRise();
-
-				if (daynum<moonrise)
-				{
-					sleeptime=(unsigned)(86400.0*(moonrise-daynum));
-					sleep(sleeptime);
-				}
-			}
-
-			if (moon_el>=0.0 && antfd!=-1)
-			{
-				iaz=(int)rint(moon_az);
-				iel=(int)rint(moon_el);
-
-				if ((oldel!=iel || oldaz!=iaz) || (once_per_second))
-				{
-					TrackDataOut(antfd,(float)iel,(float)iaz);
-					oldel=iel;
-					oldaz=iaz;
-				}
-			}
-
-			if (once_per_second)
-				sleep (1);
-			else
-				sleep (60);
-		}
-	}
-
-	else
-	{
-		fprintf(stderr,"MoonTracker (pid %d) running on %s!\n",pid,serial_port);
-		if (daynum<moonrise)
-			fprintf(stderr,"MoonTracker will sleep until moonrise at: %s UTC\n",Daynum2String(moonrise));
-
-		exit(0);
-	}
-#endif
+					close(sockfd); 
 }
