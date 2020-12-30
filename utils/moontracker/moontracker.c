@@ -22,6 +22,7 @@
 #include <netdb.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <math.h>
 #include <string.h>
 #include <fcntl.h>
@@ -38,6 +39,7 @@ int	qthalt, pid;
 double	qthlat, qthlong, moon_az, moon_el, moonrise,
 	PI=3.141592653589793, TWOPI=6.28318530717958623,
 	deg2rad=1.745329251994330e-2;
+bool	verbose;
 
 double FixAngle(x)
 double x;
@@ -362,6 +364,7 @@ char argc, *argv[];
     	struct sockaddr_in servaddr;
 	struct hostent *server;
 
+	verbose = false;
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0); 
     if (sockfd == -1) { 
@@ -372,7 +375,6 @@ char argc, *argv[];
         printf("Socket successfully created..\n"); 
     bzero(&servaddr, sizeof(servaddr)); 
   
-    // assign IP, PORT 
     servaddr.sin_family = AF_INET; 
 
 	y=argc-1;
@@ -407,6 +409,13 @@ char argc, *argv[];
 				strncpy(rot_port,argv[z],252);
 			}
 		}
+
+		if (strcmp(argv[x],"-v")==0)
+		{
+			z=x+1;
+			verbose = true;
+			usage();
+		}
 	}
 
 	if (rot_hostname[0]==0)
@@ -425,14 +434,6 @@ char argc, *argv[];
 	}
 
   
-
-	if (argc==1)
-	{
-		usage();
-		//exit(0);
-	}
-
-
 	if (ReadQTH(qthfile)==0)
 	{
 		fprintf(stderr,"%c*** Error: QTH file \"%s\" could not be loaded!\n",7,qthfile);
@@ -445,48 +446,48 @@ char argc, *argv[];
 	FindMoon(daynum);
 	fprintf(stderr,"Moon el:%f az:%f\r\v",moon_el,moon_az);
 
-					if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) { 
-						printf("connection with the server failed...\n"); 
-						exit(0); 
-					} 
-					else {
-						printf("connected to the server..\n"); 
-					}
-		//fprintf(stderr,"MoonTracker running on %s!\n",serial_port);
-		while (1)
-		{
-			daynum=CurrentDaynum();
-			FindMoon(daynum);
+	if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) { 
+		printf("connection with the server failed...\n"); 
+		exit(0); 
+	} else {
+		printf("connected to the server..\n"); 
+	}
+
+	//fprintf(stderr,"MoonTracker running on %s!\n",serial_port);
+	while (1)
+	{
+		daynum=CurrentDaynum();
+		FindMoon(daynum);
 		//fprintf(stderr,"Moon el:%f az:%f\r",moon_el,moon_az);
 
-			if (moon_el<0.0)
+		if (moon_el<0.0)
+		{
+			/* Go to sleep until moon rise. */
+
+			moonrise=FindMoonRise();
+
+			if (daynum<moonrise)
 			{
-				/* Go to sleep until moon rise. */
-
-				moonrise=FindMoonRise();
-
-				if (daynum<moonrise)
-				{
-					sleeptime=(unsigned)(86400.0*(moonrise-daynum));
-					sleep(sleeptime);
-				}
+				sleeptime=(unsigned)(86400.0*(moonrise-daynum));
+				sleep(sleeptime);
 			}
-
-			//if (moon_el>=0.0 && antfd!=-1)
-			if (moon_el>=0.0)
-			{
-				iaz=(int)rint(moon_az);
-				iel=(int)rint(moon_el);
-
-				if ((oldel!=iel || oldaz!=iaz) || (once_per_second))
-				{
-					TrackDataOut(sockfd,(float)iel,(float)iaz);
-					oldel=iel;
-					oldaz=iaz;
-				}
-			}
-
-			sleep (60);
 		}
-					close(sockfd); 
+
+		//if (moon_el>=0.0 && antfd!=-1)
+		if (moon_el>=0.0)
+		{
+			iaz=(int)rint(moon_az);
+			iel=(int)rint(moon_el);
+
+			if ((oldel!=iel || oldaz!=iaz) || (once_per_second))
+			{
+				TrackDataOut(sockfd,(float)iel,(float)iaz);
+				oldel=iel;
+				oldaz=iaz;
+			}
+		}
+
+		sleep (60);
+	}
+	close(sockfd); 
 }
